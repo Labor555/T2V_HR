@@ -102,11 +102,12 @@ if [[ "${parent_alive}" != "1" ]]; then
   repair_reason="parent job is not alive"
 elif (( hr_count < 1000 && expected_cache_workers > 0 && cache_workers == 0 )); then
   repair_reason="cache is incomplete and no cache workers are alive"
-elif (( hr_count >= 1000 && train_workers == 0 && torchrun_workers == 0 )); then
+elif (( hr_count >= 1000 && expected_cache_workers == 0 && cache_workers == 0 && train_workers == 0 && torchrun_workers == 0 )); then
   repair_reason="cache appears complete but training is not alive"
 fi
 
 state_file="${SCRIPT_DIR}/../logs/monitor_mismatch_count.local"
+train_state_file="${SCRIPT_DIR}/../logs/monitor_train_missing_count.local"
 if [[ -z "${repair_reason}" && "${parent_alive}" == "1" && "${hr_count}" -lt 1000 && "${cache_workers}" -lt "${expected_cache_workers}" ]]; then
   mkdir -p "$(dirname "${state_file}")"
   count=0
@@ -120,6 +121,21 @@ if [[ -z "${repair_reason}" && "${parent_alive}" == "1" && "${hr_count}" -lt 100
   fi
 else
   rm -f "${state_file}"
+fi
+
+if [[ -z "${repair_reason}" && "${parent_alive}" == "1" && "${hr_count}" -ge 1000 && "${expected_cache_workers}" -eq 0 && "${cache_workers}" -eq 0 && "${train_workers}" -eq 0 && "${torchrun_workers}" -eq 0 ]]; then
+  mkdir -p "$(dirname "${train_state_file}")"
+  count=0
+  [[ -f "${train_state_file}" ]] && count="$(cat "${train_state_file}")"
+  count=$((count + 1))
+  echo "${count}" > "${train_state_file}"
+  if (( count >= 2 )); then
+    repair_reason="cache appears complete but training stayed absent for ${count} checks"
+  else
+    echo "repair_deferred=cache complete but training not yet visible; will repair if repeated"
+  fi
+else
+  rm -f "${train_state_file}"
 fi
 
 if [[ -n "${repair_reason}" ]]; then
