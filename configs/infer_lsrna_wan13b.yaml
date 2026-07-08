@@ -1,0 +1,27 @@
+model:
+  model_path: /nfs/models/Wan2.1-T2V-1.3B-Diffusers
+  torch_dtype: bf16
+
+lsr:
+  checkpoint: outputs/wan13b_lsr_2x/checkpoints/latest.pt
+  scale_factor: 2
+
+generation:
+  prompt: "A cinematic shot of a waterfall in a lush forest, realistic motion, detailed water spray"
+  low_resolution: [720, 1280]
+  high_resolution: [2160, 3840]
+  num_frames: 81
+  num_inference_steps: 50
+  refine_strength: 0.35
+  seed: 1234
+
+rna:
+  base_strength: 0.02
+  detail_strength: 0.18
+  edge_weight: 0.6
+  temporal_weight: 0.3
+  latent_weight: 0.4
+
+output:
+  dir: outputs/infer_lsrna_wan13b
+

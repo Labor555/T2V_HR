@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "t2v-hr"
+version = "0.1.0"
+description = "Video-LSRNA experiments for high-resolution T2V generation."
+requires-python = ">=3.10"
+dependencies = [
+  "accelerate>=0.31.0",
+  "diffusers>=0.33.0",
+  "einops>=0.8.0",
+  "imageio[ffmpeg]>=2.34.0",
+  "numpy>=1.24",
+  "opencv-python>=4.8",
+  "pillow>=10.0",
+  "pyyaml>=6.0",
+  "safetensors>=0.4.3",
+  "torch>=2.2",
+  "torchvision>=0.17",
+  "tqdm>=4.66",
+  "transformers>=4.45",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+

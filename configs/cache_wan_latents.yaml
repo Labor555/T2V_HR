@@ -1,0 +1,21 @@
+model:
+  # Prefer a local diffusers-format Wan2.1-T2V-1.3B directory on sagi.
+  model_path: /nfs/models/Wan2.1-T2V-1.3B-Diffusers
+  torch_dtype: bf16
+
+data:
+  manifest: /data/labor/datasets/sagi_video_manifest.jsonl
+  video_key: video
+  prompt_key: prompt
+  output_dir: /data/labor/T2V_HR/cache/wan13b_latents
+  num_frames: 81
+  fps: 16
+  hr_size: [2160, 3840]
+  lr_size: [720, 1280]
+  limit: 0
+
+runtime:
+  device: cuda
+  vae_tiling: true
+  vae_slicing: true
+
