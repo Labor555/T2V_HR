@@ -11,6 +11,7 @@ rsync -az --delete \
   --exclude /data/ \
   --exclude /cache/ \
   --exclude /outputs/ \
+  --exclude /logs/ \
   --exclude /checkpoints/ \
   --exclude /remote/runtime.env \
   "${REPO_DIR}/" "${REMOTE_HOST}:${REMOTE_PROJECT_DIR}/"
