@@ -86,6 +86,10 @@ def load_wan_vae(
     device: str | torch.device = "cuda",
     enable_tiling: bool = True,
     enable_slicing: bool = True,
+    tile_sample_min_height: int | None = None,
+    tile_sample_min_width: int | None = None,
+    tile_sample_stride_height: float | None = None,
+    tile_sample_stride_width: float | None = None,
 ):
     try:
         from diffusers import AutoencoderKLWan
@@ -111,7 +115,12 @@ def load_wan_vae(
     vae = vae.to(device=device, dtype=torch_dtype).eval()
     vae.requires_grad_(False)
     if enable_tiling and hasattr(vae, "enable_tiling"):
-        vae.enable_tiling()
+        vae.enable_tiling(
+            tile_sample_min_height=tile_sample_min_height,
+            tile_sample_min_width=tile_sample_min_width,
+            tile_sample_stride_height=tile_sample_stride_height,
+            tile_sample_stride_width=tile_sample_stride_width,
+        )
     if enable_slicing and hasattr(vae, "enable_slicing"):
         vae.enable_slicing()
     return vae

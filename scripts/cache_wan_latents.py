@@ -79,6 +79,10 @@ def main() -> None:
         device=device,
         enable_tiling=bool(runtime_cfg.get("vae_tiling", True)),
         enable_slicing=bool(runtime_cfg.get("vae_slicing", True)),
+        tile_sample_min_height=runtime_cfg.get("tile_sample_min_height"),
+        tile_sample_min_width=runtime_cfg.get("tile_sample_min_width"),
+        tile_sample_stride_height=runtime_cfg.get("tile_sample_stride_height"),
+        tile_sample_stride_width=runtime_cfg.get("tile_sample_stride_width"),
     )
 
     video_key = data_cfg.get("video_key", "video")

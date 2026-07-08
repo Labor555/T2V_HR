@@ -7,8 +7,10 @@ source "${SCRIPT_DIR}/remote_common.sh"
 
 ENV_PREFIX="$(remote_env_prefix)"
 REMOTE_CUDA_VISIBLE_DEVICES="${REMOTE_CUDA_VISIBLE_DEVICES:-4,5,6,7}"
+REMOTE_CACHE_CUDA_VISIBLE_DEVICES="${REMOTE_CACHE_CUDA_VISIBLE_DEVICES:-${REMOTE_CUDA_VISIBLE_DEVICES}}"
 LIMIT="${REMOTE_CACHE_LIMIT:-1000}"
-NUM_GPUS="$(awk -F',' '{print NF}' <<<"${REMOTE_CUDA_VISIBLE_DEVICES}")"
+NUM_TRAIN_GPUS="$(awk -F',' '{print NF}' <<<"${REMOTE_CUDA_VISIBLE_DEVICES}")"
+NUM_CACHE_WORKERS="$(awk -F',' '{print NF}' <<<"${REMOTE_CACHE_CUDA_VISIBLE_DEVICES}")"
 JOB_NAME="720_4k_full_$(date +%Y%m%d_%H%M%S)"
 
 ssh "${REMOTE_HOST}" "cd '${REMOTE_PROJECT_DIR}' && ${ENV_PREFIX} bash -s" <<EOF
@@ -18,15 +20,17 @@ LOG="logs/${JOB_NAME}.log"
 PID_FILE="logs/${JOB_NAME}.pid"
 nohup bash -c '
 set -euo pipefail
-GPUS="${REMOTE_CUDA_VISIBLE_DEVICES}"
+CACHE_GPUS="${REMOTE_CACHE_CUDA_VISIBLE_DEVICES}"
+TRAIN_GPUS="${REMOTE_CUDA_VISIBLE_DEVICES}"
 LIMIT="${LIMIT}"
-NUM_GPUS="${NUM_GPUS}"
+NUM_CACHE_WORKERS="${NUM_CACHE_WORKERS}"
+NUM_TRAIN_GPUS="${NUM_TRAIN_GPUS}"
 CACHE_CONFIG="configs/cache_wan_latents_720_4k_1000.yaml"
 TRAIN_CONFIG="configs/train_lsr_720_4k_1000.yaml"
 CACHE_DIR="/data/user/lbzhu/T2V_HR/cache/wan13b_latents_720_4k_1000"
 TRAIN_DIR="/data/user/lbzhu/T2V_HR/outputs/wan13b_lsr_720_4k_1000"
 INTERVAL=300
-echo "[\$(date)] GPUs=\${GPUS} limit=\${LIMIT} num_gpus=\${NUM_GPUS}"
+echo "[\$(date)] cache_gpus=\${CACHE_GPUS} train_gpus=\${TRAIN_GPUS} limit=\${LIMIT} cache_workers=\${NUM_CACHE_WORKERS} train_gpus_n=\${NUM_TRAIN_GPUS}"
 
 cache_count() {
   if [ -f "\${CACHE_DIR}/index.jsonl" ]; then
@@ -45,14 +49,14 @@ while [ "\$(cache_count)" -lt "\${LIMIT}" ]; do
   echo "[\$(date)] cache attempt \${attempt}; current=\$(cache_count)/\${LIMIT}"
   pids=""
   shard=0
-  IFS="," read -ra GPU_LIST <<< "\${GPUS}"
+  IFS="," read -ra GPU_LIST <<< "\${CACHE_GPUS}"
   for gpu in "\${GPU_LIST[@]}"; do
     log_path="logs/${JOB_NAME}_cache_shard_\${shard}.log"
-    echo "[\$(date)] launch cache shard \${shard}/\${NUM_GPUS} on gpu \${gpu} -> \${log_path}"
+    echo "[\$(date)] launch cache shard \${shard}/\${NUM_CACHE_WORKERS} on gpu \${gpu} -> \${log_path}"
     CUDA_VISIBLE_DEVICES="\${gpu}" python scripts/cache_wan_latents.py \
       --config "\${CACHE_CONFIG}" \
       --limit "\${LIMIT}" \
-      --num-shards "\${NUM_GPUS}" \
+      --num-shards "\${NUM_CACHE_WORKERS}" \
       --shard-id "\${shard}" \
       --index-name "index_shard_\${shard}.jsonl" \
       > "\${log_path}" 2>&1 &
@@ -106,9 +110,9 @@ while true; do
     break
   fi
   set +e
-  CUDA_VISIBLE_DEVICES="\${GPUS}" python -m torch.distributed.run \
+  CUDA_VISIBLE_DEVICES="\${TRAIN_GPUS}" python -m torch.distributed.run \
     --standalone \
-    --nproc_per_node="\${NUM_GPUS}" \
+    --nproc_per_node="\${NUM_TRAIN_GPUS}" \
     scripts/train_lsr.py --config "\${TRAIN_CONFIG}" &
   train_pid=\$!
   while kill -0 "\${train_pid}" 2>/dev/null; do
