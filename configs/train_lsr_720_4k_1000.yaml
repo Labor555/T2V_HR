@@ -1,11 +1,11 @@
 seed: 1234
 precision: bf16
-output_dir: outputs/wan13b_lsr_2x
+output_dir: /data/user/lbzhu/T2V_HR/outputs/wan13b_lsr_720_4k_1000
 
 data:
-  cache_index: /data/user/lbzhu/T2V_HR/cache/wan13b_latents/index.jsonl
+  cache_index: /data/user/lbzhu/T2V_HR/cache/wan13b_latents_720_4k_1000/index.jsonl
   batch_size: 1
-  num_workers: 4
+  num_workers: 2
   random_crop:
     enabled: true
     hr_size: [96, 96]
@@ -20,9 +20,10 @@ model:
 
 train:
   max_steps: 100000
+  resume: true
   lr: 0.0002
   log_every: 50
-  save_every: 5000
+  save_every: 1000
   grad_clip: 1.0
 
 loss:
