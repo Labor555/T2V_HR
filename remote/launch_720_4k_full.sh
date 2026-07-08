@@ -40,8 +40,8 @@ merge_cache() {
   python scripts/merge_cache_indices.py --cache-dir "\${CACHE_DIR}" --output index.jsonl
 }
 
-attempt=1
 while [ "\$(cache_count)" -lt "\${LIMIT}" ]; do
+  attempt=\$((\${attempt:-0} + 1))
   echo "[\$(date)] cache attempt \${attempt}; current=\$(cache_count)/\${LIMIT}"
   pids=""
   shard=0
@@ -71,11 +71,7 @@ while [ "\$(cache_count)" -lt "\${LIMIT}" ]; do
   if [ "\$(cache_count)" -ge "\${LIMIT}" ]; then
     break
   fi
-  if [ "\${attempt}" -ge 3 ]; then
-    echo "[\$(date)] cache failed after \${attempt} attempts"
-    exit 20
-  fi
-  attempt=\$((attempt + 1))
+  echo "[\$(date)] cache is not complete; retrying in 60s and reusing valid latent files"
   sleep 60
 done
 
@@ -113,7 +109,17 @@ while true; do
   CUDA_VISIBLE_DEVICES="\${GPUS}" python -m torch.distributed.run \
     --standalone \
     --nproc_per_node="\${NUM_GPUS}" \
-    scripts/train_lsr.py --config "\${TRAIN_CONFIG}"
+    scripts/train_lsr.py --config "\${TRAIN_CONFIG}" &
+  train_pid=\$!
+  while kill -0 "\${train_pid}" 2>/dev/null; do
+    sleep "\${INTERVAL}"
+    STEP="\$(read_step)"
+    echo "[\$(date)] train watchdog alive pid=\${train_pid}; step=\${STEP}/\${MAX_STEPS}"
+    if [ "\${STEP}" -ge "\${MAX_STEPS}" ]; then
+      break
+    fi
+  done
+  wait "\${train_pid}"
   status=\$?
   set -e
   STEP="\$(read_step)"
@@ -125,7 +131,11 @@ while true; do
   echo "[\$(date)] restarting training in \${INTERVAL}s"
   sleep "\${INTERVAL}"
 done
-echo "[\$(date)] full 720/4K job done"
+echo "[\$(date)] full 720/4K job reached max steps; holding process until manually stopped"
+while true; do
+  sleep 3600
+  echo "[\$(date)] hold: training already reached \$(read_step)/\${MAX_STEPS}"
+done
 ' > "\${LOG}" 2>&1 &
 echo \$! > "\${PID_FILE}"
 echo "started ${JOB_NAME}"

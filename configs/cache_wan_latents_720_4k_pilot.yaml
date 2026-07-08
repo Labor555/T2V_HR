@@ -18,4 +18,4 @@ data:
 runtime:
   device: cuda
   vae_tiling: true
-  vae_slicing: true
+  vae_slicing: false

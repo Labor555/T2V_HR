@@ -13,7 +13,7 @@ import torch
 from tqdm import tqdm
 
 from t2v_hr.data.manifest import read_manifest, write_jsonl
-from t2v_hr.data.video_io import load_video_tensor
+from t2v_hr.data.video_io import load_video_pair_tensors, load_video_tensor
 from t2v_hr.utils.config import ensure_dir, load_config
 from t2v_hr.utils.torch_utils import dtype_from_string
 from t2v_hr.wan.vae import encode_video_latents, load_wan_vae
@@ -95,8 +95,18 @@ def main() -> None:
         lr_path = lr_dir / f"{stem}.pt"
         hr_path = hr_dir / f"{stem}.pt"
         if not _latent_file_ok(lr_path) or not _latent_file_ok(hr_path):
-            hr_video = load_video_tensor(source, num_frames=num_frames, size=hr_size, device=device, dtype=dtype)
-            lr_video = load_video_tensor(source, num_frames=num_frames, size=lr_size, device=device, dtype=dtype)
+            if hr_size != lr_size:
+                hr_video, lr_video = load_video_pair_tensors(
+                    source,
+                    num_frames=num_frames,
+                    hr_size=hr_size,
+                    lr_size=lr_size,
+                    device=device,
+                    dtype=dtype,
+                )
+            else:
+                hr_video = load_video_tensor(source, num_frames=num_frames, size=hr_size, device=device, dtype=dtype)
+                lr_video = hr_video
             hr_latents = encode_video_latents(vae, hr_video).cpu()
             lr_latents = encode_video_latents(vae, lr_video).cpu()
             _atomic_torch_save(
