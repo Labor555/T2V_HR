@@ -11,7 +11,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 import torch
 
 from t2v_hr.models.video_lsr import build_video_lsr
-from t2v_hr.rna.video_rna import add_region_time_noise, build_rna_map
+from t2v_hr.rna.video_rna import VideoRNAConfig, apply_video_rna
 from t2v_hr.utils.config import ensure_dir, load_config
 from t2v_hr.utils.torch_utils import dtype_from_string, seed_everything
 
@@ -55,16 +55,17 @@ def main() -> None:
     with torch.no_grad():
         z_ref = lsr(z_lr)
         rna_cfg = config.get("rna", {})
-        detail = build_rna_map(
-            z_ref.float(),
-            latent_weight=float(rna_cfg.get("latent_weight", 0.4)),
-            temporal_weight=float(rna_cfg.get("temporal_weight", 0.3)),
-        ).to(device=device, dtype=dtype)
-        z_noisy = add_region_time_noise(
+        z_noisy, detail = apply_video_rna(
             z_ref,
-            detail,
-            base_strength=float(rna_cfg.get("base_strength", 0.02)),
-            detail_strength=float(rna_cfg.get("detail_strength", 0.18)),
+            config=VideoRNAConfig(
+                latent_weight=float(rna_cfg.get("latent_weight", 0.4)),
+                temporal_weight=float(rna_cfg.get("temporal_weight", 0.3)),
+                edge_weight=float(rna_cfg.get("edge_weight", 0.0)),
+                smooth_kernel=int(rna_cfg.get("smooth_kernel", 3)),
+                gamma=float(rna_cfg.get("gamma", 1.0)),
+                base_strength=float(rna_cfg.get("base_strength", 0.02)),
+                detail_strength=float(rna_cfg.get("detail_strength", 0.18)),
+            ),
         )
 
     torch.save({"z_lr": z_lr.cpu(), "z_hr_ref": z_ref.cpu(), "detail_map": detail.cpu(), "z_noisy": z_noisy.cpu()}, out_dir / "lsrna_latents.pt")
@@ -74,4 +75,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

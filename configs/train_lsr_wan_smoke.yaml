@@ -1,28 +1,28 @@
 seed: 1234
 precision: bf16
-output_dir: outputs/wan13b_lsr_2x
+output_dir: /data/user/lbzhu/T2V_HR/outputs/wan13b_lsr_smoke
 
 data:
-  cache_index: /data/user/lbzhu/T2V_HR/cache/wan13b_latents/index.jsonl
+  cache_index: /data/user/lbzhu/T2V_HR/cache/wan13b_latents_smoke/index.jsonl
   batch_size: 1
-  num_workers: 4
+  num_workers: 0
   random_crop:
     enabled: true
-    hr_size: [64, 64]
+    hr_size: [32, 32]
 
 model:
   in_channels: 16
-  hidden_channels: 128
-  num_blocks: 8
+  hidden_channels: 64
+  num_blocks: 4
   temporal_kernel: 3
   scale_factor: 2
   use_text: false
 
 train:
-  max_steps: 100000
+  max_steps: 20
   lr: 0.0002
-  log_every: 50
-  save_every: 5000
+  log_every: 1
+  save_every: 20
   grad_clip: 1.0
 
 loss:

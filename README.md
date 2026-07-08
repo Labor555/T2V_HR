@@ -43,7 +43,7 @@ bash remote/bootstrap_sagi.sh
 bash remote/run_on_sagi.sh configs/train_lsr_wan13b.yaml
 ```
 
-`sagi` must resolve in SSH config on the machine running the sync script.
+`sagittarius` must resolve in SSH config on the machine running the sync script.
 
 ## Current Wan Denoise Hook Status
 

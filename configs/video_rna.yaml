@@ -1,0 +1,12 @@
+rna:
+  base_strength: 0.02
+  detail_strength: 0.18
+  latent_weight: 0.5
+  temporal_weight: 0.3
+  edge_weight: 0.0
+  smooth_kernel: 5
+  gamma: 1.0
+
+output:
+  dir: outputs/video_rna
+

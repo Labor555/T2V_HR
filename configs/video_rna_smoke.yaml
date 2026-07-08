@@ -1,0 +1,11 @@
+rna:
+  base_strength: 0.02
+  detail_strength: 0.12
+  latent_weight: 0.5
+  temporal_weight: 0.3
+  edge_weight: 0.0
+  smooth_kernel: 5
+  gamma: 1.0
+
+output:
+  dir: /data/user/lbzhu/T2V_HR/outputs/video_rna_smoke

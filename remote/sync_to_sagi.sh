@@ -8,11 +8,11 @@ source "${SCRIPT_DIR}/runtime.env"
 ssh "${REMOTE_HOST}" "mkdir -p '${REMOTE_PROJECT_DIR}'"
 rsync -az --delete \
   --exclude .git \
-  --exclude data \
-  --exclude outputs \
-  --exclude checkpoints \
-  --exclude remote/runtime.env \
+  --exclude /data/ \
+  --exclude /cache/ \
+  --exclude /outputs/ \
+  --exclude /checkpoints/ \
+  --exclude /remote/runtime.env \
   "${REPO_DIR}/" "${REMOTE_HOST}:${REMOTE_PROJECT_DIR}/"
 
 echo "Synced ${REPO_DIR} -> ${REMOTE_HOST}:${REMOTE_PROJECT_DIR}"
-

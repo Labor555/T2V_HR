@@ -4,7 +4,7 @@ import torch
 
 from t2v_hr.models.losses import video_lsr_loss
 from t2v_hr.models.video_lsr import VideoLSR
-from t2v_hr.rna.video_rna import add_region_time_noise, build_rna_map
+from t2v_hr.rna.video_rna import VideoRNAConfig, add_region_time_noise, apply_video_rna, build_rna_map, rgb_sobel_edges
 
 
 def test_video_lsr_shape_and_loss():
@@ -25,3 +25,12 @@ def test_video_rna_shape():
     assert detail.shape == (1, 1, 5, 16, 20)
     assert noised.shape == latents.shape
 
+
+def test_video_rna_rgb_edges_and_apply():
+    latents = torch.randn(1, 4, 5, 16, 20)
+    video = torch.randn(1, 3, 5, 64, 80)
+    edges = rgb_sobel_edges(video, output_size=(16, 20))
+    noised, detail = apply_video_rna(latents, decoded_video=video, config=VideoRNAConfig(edge_weight=0.5))
+    assert edges.shape == (1, 1, 5, 16, 20)
+    assert detail.shape == (1, 1, 5, 16, 20)
+    assert noised.shape == latents.shape

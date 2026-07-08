@@ -15,7 +15,7 @@ from t2v_hr.data.manifest import read_manifest, write_jsonl
 from t2v_hr.data.video_io import load_video_tensor
 from t2v_hr.utils.config import ensure_dir, load_config
 from t2v_hr.utils.torch_utils import dtype_from_string
-from t2v_hr.wan.vae import encode_video_latents, load_wan_vae_from_diffusers
+from t2v_hr.wan.vae import encode_video_latents, load_wan_vae
 
 
 def parse_args():
@@ -41,8 +41,10 @@ def main() -> None:
     if limit and limit > 0:
         rows = rows[:limit]
 
-    vae = load_wan_vae_from_diffusers(
+    vae = load_wan_vae(
         config["model"]["model_path"],
+        fmt=str(config["model"].get("format", "diffusers")).lower(),
+        vae_weight=str(config["model"].get("vae_weight", "Wan2.1_VAE.pth")),
         torch_dtype=dtype,
         device=device,
         enable_tiling=bool(runtime_cfg.get("vae_tiling", True)),
@@ -83,4 +85,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
