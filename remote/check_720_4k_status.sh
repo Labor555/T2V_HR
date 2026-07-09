@@ -50,7 +50,18 @@ print(expected)
 PY
 )"
 step="0"
+max_steps="100000"
 latest_ckpt="outputs/wan13b_lsr_720_4k_1000/checkpoints/latest.pt"
+train_config="configs/train_lsr_720_4k_1000.yaml"
+if [[ -f "${train_config}" ]]; then
+  max_steps="$("${PYTHON_BIN}" - <<'PY'
+import yaml
+with open("configs/train_lsr_720_4k_1000.yaml", "r", encoding="utf-8") as handle:
+    cfg = yaml.safe_load(handle)
+print(int(cfg.get("train", {}).get("max_steps", 100000)))
+PY
+)"
+fi
 if [[ -f "${latest_ckpt}" ]]; then
   step="$("${PYTHON_BIN}" - <<'PY'
 from pathlib import Path
@@ -59,6 +70,10 @@ path = Path("outputs/wan13b_lsr_720_4k_1000/checkpoints/latest.pt")
 print(int(torch.load(path, map_location="cpu").get("step", 0)))
 PY
 )"
+fi
+training_complete=0
+if (( step >= max_steps )); then
+  training_complete=1
 fi
 
 echo "latest_pid_file=${latest_pid_file}"
@@ -72,6 +87,8 @@ echo "expected_cache_workers=${expected_cache_workers}"
 echo "train_workers=${train_workers}"
 echo "torchrun_workers=${torchrun_workers}"
 echo "train_step=${step}"
+echo "train_max_steps=${max_steps}"
+echo "training_complete=${training_complete}"
 echo "gpu_summary_begin"
 nvidia-smi --query-gpu=index,memory.used,memory.total,utilization.gpu --format=csv,noheader
 echo "gpu_summary_end"
@@ -95,10 +112,13 @@ cache_workers="$(awk -F= '$1=="cache_workers"{print $2}' <<<"${STATUS}")"
 expected_cache_workers="$(awk -F= '$1=="expected_cache_workers"{print $2}' <<<"${STATUS}")"
 train_workers="$(awk -F= '$1=="train_workers"{print $2}' <<<"${STATUS}")"
 torchrun_workers="$(awk -F= '$1=="torchrun_workers"{print $2}' <<<"${STATUS}")"
+training_complete="$(awk -F= '$1=="training_complete"{print $2}' <<<"${STATUS}")"
 pid="$(awk -F= '$1=="pid"{print $2}' <<<"${STATUS}")"
 
 repair_reason=""
-if [[ "${parent_alive}" != "1" ]]; then
+if [[ "${training_complete}" == "1" ]]; then
+  repair_reason=""
+elif [[ "${parent_alive}" != "1" ]]; then
   repair_reason="parent job is not alive"
 elif (( hr_count < 1000 && expected_cache_workers > 0 && cache_workers == 0 )); then
   repair_reason="cache is incomplete and no cache workers are alive"
@@ -108,7 +128,9 @@ fi
 
 state_file="${SCRIPT_DIR}/../logs/monitor_mismatch_count.local"
 train_state_file="${SCRIPT_DIR}/../logs/monitor_train_missing_count.local"
-if [[ -z "${repair_reason}" && "${parent_alive}" == "1" && "${hr_count}" -lt 1000 && "${cache_workers}" -lt "${expected_cache_workers}" ]]; then
+if [[ "${training_complete}" == "1" ]]; then
+  rm -f "${state_file}" "${train_state_file}"
+elif [[ -z "${repair_reason}" && "${parent_alive}" == "1" && "${hr_count}" -lt 1000 && "${cache_workers}" -lt "${expected_cache_workers}" ]]; then
   mkdir -p "$(dirname "${state_file}")"
   count=0
   [[ -f "${state_file}" ]] && count="$(cat "${state_file}")"
@@ -123,7 +145,7 @@ else
   rm -f "${state_file}"
 fi
 
-if [[ -z "${repair_reason}" && "${parent_alive}" == "1" && "${hr_count}" -ge 1000 && "${expected_cache_workers}" -eq 0 && "${cache_workers}" -eq 0 && "${train_workers}" -eq 0 && "${torchrun_workers}" -eq 0 ]]; then
+if [[ -z "${repair_reason}" && "${training_complete}" != "1" && "${parent_alive}" == "1" && "${hr_count}" -ge 1000 && "${expected_cache_workers}" -eq 0 && "${cache_workers}" -eq 0 && "${train_workers}" -eq 0 && "${torchrun_workers}" -eq 0 ]]; then
   mkdir -p "$(dirname "${train_state_file}")"
   count=0
   [[ -f "${train_state_file}" ]] && count="$(cat "${train_state_file}")"
