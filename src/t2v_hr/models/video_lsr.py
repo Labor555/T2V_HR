@@ -83,8 +83,121 @@ class VideoLSR(nn.Module):
         return residual
 
 
-def build_video_lsr(config: dict) -> VideoLSR:
-    return VideoLSR(
+class ConvGRUCell(nn.Module):
+    def __init__(self, channels: int, kernel_size: int = 3) -> None:
+        super().__init__()
+        padding = kernel_size // 2
+        self.gates = nn.Conv2d(channels * 2, channels * 2, kernel_size=kernel_size, padding=padding)
+        self.candidate = nn.Conv2d(channels * 2, channels, kernel_size=kernel_size, padding=padding)
+
+    def forward(self, x: torch.Tensor, h: torch.Tensor) -> torch.Tensor:
+        gates = self.gates(torch.cat([x, h], dim=1))
+        reset, update = gates.chunk(2, dim=1)
+        reset = torch.sigmoid(reset)
+        update = torch.sigmoid(update)
+        proposal = torch.tanh(self.candidate(torch.cat([x, reset * h], dim=1)))
+        return (1.0 - update) * h + update * proposal
+
+
+class BidirectionalPropagation(nn.Module):
+    def __init__(self, channels: int, kernel_size: int = 3) -> None:
+        super().__init__()
+        self.forward_cell = ConvGRUCell(channels, kernel_size=kernel_size)
+        self.backward_cell = ConvGRUCell(channels, kernel_size=kernel_size)
+        self.fuse = nn.Sequential(
+            nn.Conv3d(channels * 3, channels, kernel_size=1),
+            nn.SiLU(),
+            nn.Conv3d(channels, channels, kernel_size=3, padding=1),
+        )
+
+    def _propagate(self, frames: torch.Tensor, cell: ConvGRUCell, reverse: bool = False) -> torch.Tensor:
+        b, c, t, h, w = frames.shape
+        hidden = frames.new_zeros(b, c, h, w)
+        outputs: list[torch.Tensor] = []
+        indices = range(t - 1, -1, -1) if reverse else range(t)
+        for index in indices:
+            hidden = cell(frames[:, :, index], hidden)
+            outputs.append(hidden)
+        if reverse:
+            outputs.reverse()
+        return torch.stack(outputs, dim=2)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        forward_features = self._propagate(x, self.forward_cell, reverse=False)
+        backward_features = self._propagate(x, self.backward_cell, reverse=True)
+        return x + self.fuse(torch.cat([x, forward_features, backward_features], dim=1))
+
+
+class VideoLSRRecurrent(nn.Module):
+    """Latent SR with bidirectional recurrent propagation.
+
+    This keeps the v4 residual upsampler but adds BasicVSR-style temporal
+    propagation before HR residual synthesis, giving the model a path to carry
+    recurring details across frames instead of reconstructing each frame alone.
+    """
+
+    def __init__(
+        self,
+        in_channels: int = 16,
+        hidden_channels: int = 128,
+        num_blocks: int = 8,
+        temporal_kernel: int = 3,
+        scale_factor: int = 2,
+        residual_learning: bool = True,
+        residual_scale: float = 1.0,
+        use_checkpoint: bool = False,
+        propagation_blocks: int = 1,
+        propagation_kernel: int = 3,
+    ) -> None:
+        super().__init__()
+        if scale_factor < 1:
+            raise ValueError("scale_factor must be >= 1")
+        self.in_channels = int(in_channels)
+        self.scale_factor = int(scale_factor)
+        self.residual_learning = bool(residual_learning)
+        self.residual_scale = float(residual_scale)
+        self.proj_in = nn.Conv3d(in_channels, hidden_channels, kernel_size=3, padding=1)
+        self.local_blocks = nn.Sequential(
+            *[
+                ResidualTemporalBlock(
+                    hidden_channels,
+                    temporal_kernel=temporal_kernel,
+                    use_checkpoint=use_checkpoint,
+                )
+                for _ in range(num_blocks)
+            ]
+        )
+        self.propagation = nn.Sequential(
+            *[
+                BidirectionalPropagation(hidden_channels, kernel_size=propagation_kernel)
+                for _ in range(int(propagation_blocks))
+            ]
+        )
+        self.proj_out = nn.Conv3d(hidden_channels, in_channels * scale_factor * scale_factor, kernel_size=3, padding=1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.ndim != 5:
+            raise ValueError(f"Expected [B,C,T,H,W], got {tuple(x.shape)}")
+        b, c, t, h, w = x.shape
+        if c != self.in_channels:
+            raise ValueError(f"Expected {self.in_channels} channels, got {c}")
+        base = F.interpolate(x, scale_factor=(1, self.scale_factor, self.scale_factor), mode="trilinear", align_corners=False)
+        features = self.local_blocks(self.proj_in(x))
+        features = self.propagation(features)
+        residual = self.proj_out(features)
+        scale = self.scale_factor
+        residual = residual.view(b, c, scale, scale, t, h, w)
+        residual = residual.permute(0, 1, 4, 5, 2, 6, 3).contiguous()
+        residual = residual.view(b, c, t, h * scale, w * scale)
+        if self.residual_learning:
+            return base + self.residual_scale * residual
+        return residual
+
+
+def build_video_lsr(config: dict) -> nn.Module:
+    architecture = str(config.get("architecture", "conv3d")).lower()
+    cls = VideoLSRRecurrent if architecture in {"recurrent", "bidir_recurrent", "basicvsr"} else VideoLSR
+    kwargs = dict(
         in_channels=int(config.get("in_channels", 16)),
         hidden_channels=int(config.get("hidden_channels", 128)),
         num_blocks=int(config.get("num_blocks", 8)),
@@ -94,3 +207,9 @@ def build_video_lsr(config: dict) -> VideoLSR:
         residual_scale=float(config.get("residual_scale", 1.0)),
         use_checkpoint=bool(config.get("use_checkpoint", False)),
     )
+    if cls is VideoLSRRecurrent:
+        kwargs.update(
+            propagation_blocks=int(config.get("propagation_blocks", 1)),
+            propagation_kernel=int(config.get("propagation_kernel", 3)),
+        )
+    return cls(**kwargs)

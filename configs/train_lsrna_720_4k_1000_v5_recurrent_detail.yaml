@@ -1,0 +1,53 @@
+seed: 20260709
+precision: bf16
+output_dir: /data/user/lbzhu/T2V_HR/outputs/wan13b_lsrna_720_4k_1000_v5_recurrent_detail
+
+data:
+  cache_index: /data/user/lbzhu/T2V_HR/cache/wan13b_latents_720_4k_1000/index.jsonl
+  batch_size: 1
+  num_workers: 2
+  random_crop:
+    enabled: false
+
+model:
+  architecture: recurrent
+  in_channels: 16
+  hidden_channels: 384
+  num_blocks: 12
+  temporal_kernel: 3
+  propagation_blocks: 1
+  propagation_kernel: 3
+  scale_factor: 3
+  residual_learning: true
+  residual_scale: 1.0
+  use_checkpoint: false
+
+train:
+  max_steps: 100000
+  resume: true
+  lr: 0.00004
+  log_every: 5
+  save_every: 500
+  grad_clip: 1.0
+
+loss:
+  latent_l1: 0.55
+  residual_l1: 0.25
+  temporal_l1: 0.08
+  temporal_lag2_l1: 0.05
+  temporal_accel_l1: 0.10
+  motion_temporal_l1: 0.18
+  residual_temporal_l1: 0.12
+  downsample_l1: 0.15
+  highfreq_l1: 0.20
+  edge_weighted_highfreq_l1: 0.20
+  residual_highfreq_l1: 0.55
+  motion_residual_highfreq_l1: 0.25
+  spatial_grad_l1: 0.12
+  residual_grad_l1: 0.28
+  laplacian_l1: 0.08
+  residual_laplacian_l1: 0.18
+  local_std_l1: 0.06
+  channel_stats_l1: 0.03
+  motion_max_shift: 1
+  edge_weight_strength: 1.5
