@@ -35,6 +35,9 @@ if [[ "${REPAIR}" == "1" ]]; then
 fi
 
 running_eval="$(ps -eo pid=,args= | awk -v root="${EVAL_ROOT}" -v train="${TRAIN_DIR}" '
+  $0 ~ /awk -v root=/ {
+    next
+  }
   ($0 ~ /python .*infer_lsrna.py/ && (index($0, train) || index($0, root))) ||
   ($0 ~ /python .*decode_lsrna_latents.py/ && index($0, root)) ||
   ($0 ~ /bash .*eval_runner.sh/ && index($0, root)) ||
