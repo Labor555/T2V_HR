@@ -5,6 +5,7 @@ from typing import Any
 
 import torch
 
+from t2v_hr.models.lora import inject_lora_linear, load_lora_state_dict
 from t2v_hr.wan.vae import load_wan_vae
 
 
@@ -183,6 +184,35 @@ def load_wan_pipeline_legacy(
     return pipe
 
 
+def load_wan_lora_into_transformer(
+    transformer,
+    checkpoint: str | Path,
+    *,
+    lora_config: dict[str, Any] | None = None,
+    strict: bool = True,
+):
+    payload = torch.load(checkpoint, map_location="cpu")
+    cfg = dict(payload.get("config", {}).get("lora", {}))
+    if lora_config:
+        cfg.update(lora_config)
+    result = inject_lora_linear(
+        transformer,
+        target_substrings=tuple(
+            cfg.get(
+                "target_substrings",
+                ["attn1.to_q", "attn1.to_k", "attn1.to_v", "attn1.to_out.0"],
+            )
+        ),
+        rank=int(cfg.get("rank", 8)),
+        alpha=float(cfg.get("alpha", 8.0)),
+        dropout=float(cfg.get("dropout", 0.0)),
+    )
+    load_lora_state_dict(transformer, payload["lora"], strict=strict)
+    transformer.requires_grad_(False)
+    transformer.eval()
+    return result, payload
+
+
 def infer_num_frames_from_latents(latents: torch.Tensor, temporal_scale: int = 4) -> int:
     latent_frames = int(latents.shape[2])
     return (latent_frames - 1) * temporal_scale + 1
@@ -206,6 +236,32 @@ def decode_wan_latents(pipe, latents: torch.Tensor, *, output_type: str = "np"):
     return pipe.video_processor.postprocess_video(video, output_type=output_type)
 
 
+def _refine_start_index(num_timesteps: int, refine_strength: float) -> int:
+    return max(0, min(num_timesteps - 1, int(round((1.0 - refine_strength) * num_timesteps))))
+
+
+def renoise_wan_latents(
+    pipe,
+    latents: torch.Tensor,
+    *,
+    num_inference_steps: int = 50,
+    refine_strength: float = 0.35,
+    generator: torch.Generator | None = None,
+) -> tuple[torch.Tensor, float, int]:
+    """Add FlowMatch noise to a final latent for HR denoise/refine."""
+
+    if not 0 < refine_strength <= 1:
+        raise ValueError("refine_strength must be in (0, 1].")
+    device = pipe._execution_device
+    latents = latents.to(device=device, dtype=torch.float32)
+    pipe.scheduler.set_timesteps(num_inference_steps, device=device)
+    start_index = _refine_start_index(len(pipe.scheduler.timesteps), refine_strength)
+    sigma = pipe.scheduler.sigmas[start_index].to(device=device, dtype=torch.float32)
+    noise = torch.randn(latents.shape, generator=generator, device=device, dtype=torch.float32)
+    noised = (1.0 - sigma) * latents + sigma * noise
+    return noised, float(sigma.item()), int(start_index)
+
+
 def refine_wan_from_latents(
     pipe,
     latents: torch.Tensor,
@@ -220,6 +276,8 @@ def refine_wan_from_latents(
     guidance_scale: float = 5.0,
     max_sequence_length: int = 512,
     attention_kwargs: dict[str, Any] | None = None,
+    renoise: bool = False,
+    generator: torch.Generator | None = None,
     output_type: str = "np",
 ):
     if not 0 < refine_strength <= 1:
@@ -247,6 +305,16 @@ def refine_wan_from_latents(
     prompt_embeds = prompt_embeds.to(transformer_dtype)
     if negative_prompt_embeds is not None:
         negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
+
+    if renoise:
+        latents, sigma, start_index = renoise_wan_latents(
+            pipe,
+            latents,
+            num_inference_steps=num_inference_steps,
+            refine_strength=refine_strength,
+            generator=generator,
+        )
+        print(f"renoise_sigma={sigma:.6f} start_index={start_index}", flush=True)
 
     latents = denoise_wan_latents(
         pipe,
@@ -286,7 +354,7 @@ def denoise_wan_latents(
 
     pipe.scheduler.set_timesteps(num_inference_steps, device=device)
     timesteps = pipe.scheduler.timesteps
-    start_index = max(0, min(len(timesteps) - 1, int(round((1.0 - refine_strength) * len(timesteps)))))
+    start_index = _refine_start_index(len(timesteps), refine_strength)
     timesteps = timesteps[start_index:]
     pipe.scheduler.set_begin_index(start_index)
     pipe._num_timesteps = len(timesteps)
@@ -382,6 +450,8 @@ def refine_wan_tiled_from_latents(
     tile_hw: tuple[int, int] = (64, 64),
     overlap: int = 16,
     attention_kwargs: dict[str, Any] | None = None,
+    renoise: bool = False,
+    generator: torch.Generator | None = None,
     output_type: str = "np",
 ):
     device = pipe._execution_device
@@ -406,6 +476,16 @@ def refine_wan_tiled_from_latents(
         max_sequence_length=max_sequence_length,
         device=device,
     )
+
+    if renoise:
+        latents, sigma, start_index = renoise_wan_latents(
+            pipe,
+            latents,
+            num_inference_steps=num_inference_steps,
+            refine_strength=refine_strength,
+            generator=generator,
+        )
+        print(f"global_renoise_sigma={sigma:.6f} start_index={start_index}", flush=True)
 
     accum = torch.zeros_like(latents)
     weights = torch.zeros((1, 1, 1, full_h, full_w), device=device, dtype=latents.dtype)
