@@ -10,7 +10,7 @@ TRAIN_GPUS="${LSRNA_V2_GPUS:-auto}"
 MIN_GPUS="${LSRNA_V2_MIN_GPUS:-1}"
 MEM_THRESHOLD_MB="${LSRNA_V2_WAIT_MEM_MB:-3000}"
 UTIL_THRESHOLD="${LSRNA_V2_WAIT_UTIL:-20}"
-CONFIG="${LSRNA_V2_CONFIG:-configs/train_lsrna_720_4k_1000_v2.yaml}"
+CONFIG="${LSRNA_V2_CONFIG:-configs/train_lsrna_720_4k_1000_v3_full.yaml}"
 RUN_NAME="lsrna_v2_train_$(date +%Y%m%d_%H%M%S)"
 
 ssh "${REMOTE_HOST}" "cd '${REMOTE_PROJECT_DIR}' && ${ENV_PREFIX} bash -s" <<EOF
@@ -64,7 +64,7 @@ while true; do
 done
 
 echo "[\$(date)] starting v2 LSRNA training config=\${CONFIG} gpus=\${TRAIN_GPUS} n=\${NUM_TRAIN_GPUS}"
-CUDA_VISIBLE_DEVICES="\${TRAIN_GPUS}" python -m torch.distributed.run \
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True CUDA_VISIBLE_DEVICES="\${TRAIN_GPUS}" python -m torch.distributed.run \
   --standalone \
   --nproc_per_node="\${NUM_TRAIN_GPUS}" \
   scripts/train_lsr.py --config "\${CONFIG}" --no-resume

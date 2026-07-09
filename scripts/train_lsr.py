@@ -56,6 +56,8 @@ def parse_args():
     parser.add_argument("--config", required=True)
     parser.add_argument("--dry-run", action="store_true", help="Use synthetic latent pairs and run only a few steps.")
     parser.add_argument("--no-resume", action="store_true", help="Do not resume from checkpoints/latest.pt.")
+    parser.add_argument("--max-steps", type=int, default=None, help="Override train.max_steps for fit/debug runs.")
+    parser.add_argument("--output-dir", default="", help="Override output_dir for fit/debug runs.")
     return parser.parse_args()
 
 
@@ -83,7 +85,7 @@ def main() -> None:
 
     device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
     dtype = dtype_from_string(config.get("precision", "fp32"))
-    out_dir = ensure_dir(config.get("output_dir", "outputs/lsr"))
+    out_dir = ensure_dir(args.output_dir or config.get("output_dir", "outputs/lsr"))
     ckpt_dir = ensure_dir(out_dir / "checkpoints")
 
     model = build_video_lsr(config.get("model", {})).to(device)
@@ -132,7 +134,7 @@ def main() -> None:
         drop_last=True,
     )
 
-    max_steps = int(config.get("train", {}).get("max_steps", 1000))
+    max_steps = int(args.max_steps or config.get("train", {}).get("max_steps", 1000))
     if args.dry_run:
         max_steps = min(max_steps, 3)
     log_every = int(config.get("train", {}).get("log_every", 50))

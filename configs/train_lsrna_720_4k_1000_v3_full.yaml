@@ -1,0 +1,36 @@
+seed: 20260709
+precision: bf16
+output_dir: /data/user/lbzhu/T2V_HR/outputs/wan13b_lsrna_720_4k_1000_v3_full
+
+data:
+  cache_index: /data/user/lbzhu/T2V_HR/cache/wan13b_latents_720_4k_1000/index.jsonl
+  batch_size: 1
+  num_workers: 2
+  random_crop:
+    enabled: false
+
+model:
+  in_channels: 16
+  hidden_channels: 448
+  num_blocks: 16
+  temporal_kernel: 3
+  scale_factor: 3
+  residual_learning: true
+  residual_scale: 1.0
+  use_checkpoint: false
+
+train:
+  max_steps: 100000
+  resume: true
+  lr: 0.00005
+  log_every: 5
+  save_every: 500
+  grad_clip: 1.0
+
+loss:
+  latent_l1: 1.0
+  temporal_l1: 0.2
+  downsample_l1: 0.2
+  highfreq_l1: 0.6
+  spatial_grad_l1: 0.3
+  channel_stats_l1: 0.05
