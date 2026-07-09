@@ -13,13 +13,14 @@ SAMPLE="${LSRNA_V3_EVAL_SAMPLE:-00000004}"
 MEM_THRESHOLD_MB="${LSRNA_V3_EVAL_MEM_MB:-25000}"
 UTIL_THRESHOLD="${LSRNA_V3_EVAL_UTIL:-100}"
 FORCE_GPU="${LSRNA_V3_EVAL_GPU:-}"
+TRAIN_DIR="${LSRNA_EVAL_TRAIN_DIR:-outputs/wan13b_lsrna_720_4k_1000_v3_full}"
+EVAL_ROOT="${LSRNA_EVAL_ROOT:-outputs/wan13b_lsrna_v3_checkpoint_evals}"
+CONFIG="${LSRNA_EVAL_INFER_CONFIG:-configs/infer_lsrna_720_4k_1000_v3_full.yaml}"
+LOG_PREFIX="${LSRNA_EVAL_LOG_PREFIX:-eval_lsrna_v3}"
 
-ssh "${REMOTE_HOST}" "PROJECT='${REMOTE_PROJECT_DIR}' PY='${REMOTE_PYTHON:-python}' SAMPLE='${SAMPLE}' MEM_THRESHOLD_MB='${MEM_THRESHOLD_MB}' UTIL_THRESHOLD='${UTIL_THRESHOLD}' FORCE_GPU='${FORCE_GPU}' REPAIR='${REPAIR}' bash -s" <<'EOF'
+ssh "${REMOTE_HOST}" "PROJECT='${REMOTE_PROJECT_DIR}' PY='${REMOTE_PYTHON:-python}' SAMPLE='${SAMPLE}' MEM_THRESHOLD_MB='${MEM_THRESHOLD_MB}' UTIL_THRESHOLD='${UTIL_THRESHOLD}' FORCE_GPU='${FORCE_GPU}' REPAIR='${REPAIR}' TRAIN_DIR='${TRAIN_DIR}' EVAL_ROOT='${EVAL_ROOT}' CONFIG='${CONFIG}' LOG_PREFIX='${LOG_PREFIX}' bash -s" <<'EOF'
 set -euo pipefail
 cd "${PROJECT}"
-TRAIN_DIR="outputs/wan13b_lsrna_720_4k_1000_v3_full"
-EVAL_ROOT="outputs/wan13b_lsrna_v3_checkpoint_evals"
-CONFIG="configs/infer_lsrna_720_4k_1000_v3_full.yaml"
 mkdir -p logs "${EVAL_ROOT}"
 
 if [[ "${REPAIR}" == "1" ]]; then
@@ -33,7 +34,7 @@ if [[ "${REPAIR}" == "1" ]]; then
   done < <(find "${EVAL_ROOT}" -mindepth 2 -maxdepth 2 -name RUNNING 2>/dev/null | sort)
 fi
 
-running_eval="$(pgrep -af 'eval_lsrna_v3_checkpoint|infer_lsrna.py .*train_lsrna_720_4k_1000_v3_full|decode_lsrna_latents.py .*wan13b_lsrna_v3_checkpoint_evals' || true)"
+running_eval="$(ps -eo pid=,args= | awk -v root="${EVAL_ROOT}" -v train="${TRAIN_DIR}" 'index($0, root) || ($0 ~ /infer_lsrna.py/ && index($0, train)) {print}' || true)"
 if [[ -n "${running_eval}" ]]; then
   echo "eval_status=already_running"
   printf '%s\n' "${running_eval}" | sed 's/^/running_eval_process=/'
@@ -62,11 +63,12 @@ available_gpus() {
     '
 }
 
-next_ckpt="$("${PY}" - <<'PY'
+next_ckpt="$("${PY}" - "${TRAIN_DIR}" "${EVAL_ROOT}" <<'PY'
 from pathlib import Path
+import sys
 
-train_dir = Path("outputs/wan13b_lsrna_720_4k_1000_v3_full/checkpoints")
-eval_root = Path("outputs/wan13b_lsrna_v3_checkpoint_evals")
+train_dir = Path(sys.argv[1]) / "checkpoints"
+eval_root = Path(sys.argv[2])
 ckpts = sorted(train_dir.glob("step_*.pt"))
 for ckpt in ckpts:
     step = ckpt.stem.split("_")[-1]
@@ -89,6 +91,7 @@ step="$(basename "${next_ckpt}" .pt | sed 's/^step_//')"
 out="${EVAL_ROOT}/step_${step}/${SAMPLE}"
 step_dir="${EVAL_ROOT}/step_${step}"
 log="logs/eval_lsrna_v3_step_${step}_${SAMPLE}.log"
+log="logs/${LOG_PREFIX}_step_${step}_${SAMPLE}.log"
 gpu="$(available_gpus)"
 
 echo "eval_status=found_checkpoint"

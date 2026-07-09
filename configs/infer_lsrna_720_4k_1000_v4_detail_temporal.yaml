@@ -1,0 +1,30 @@
+model:
+  model_path: /data/pretrained/Wan2.1-T2V-1.3B
+  format: legacy
+  vae_weight: Wan2.1_VAE.pth
+  torch_dtype: bf16
+
+lsr:
+  checkpoint: /data/user/lbzhu/T2V_HR/outputs/wan13b_lsrna_720_4k_1000_v4_detail_temporal/checkpoints/latest.pt
+  scale_factor: 3
+
+generation:
+  prompt: "high quality video"
+  low_resolution: [720, 1280]
+  high_resolution: [2160, 3840]
+  num_frames: 81
+  num_inference_steps: 50
+  refine_strength: 0.35
+  seed: 1234
+
+rna:
+  base_strength: 0.02
+  detail_strength: 0.12
+  edge_weight: 0.0
+  temporal_weight: 0.3
+  latent_weight: 0.5
+  smooth_kernel: 5
+  gamma: 1.0
+
+output:
+  dir: /data/user/lbzhu/T2V_HR/outputs/infer_lsrna_720_4k_1000_v4_detail_temporal

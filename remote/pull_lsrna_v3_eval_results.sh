@@ -5,8 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/runtime.env"
 
 SAMPLE="${LSRNA_V3_EVAL_SAMPLE:-00000004}"
-REMOTE_EVAL_ROOT="outputs/wan13b_lsrna_v3_checkpoint_evals"
-LOCAL_EVAL_ROOT="${LSRNA_V3_LOCAL_EVAL_ROOT:-outputs/wan13b_lsrna_v3_checkpoint_evals}"
+REMOTE_EVAL_ROOT="${LSRNA_EVAL_ROOT:-outputs/wan13b_lsrna_v3_checkpoint_evals}"
+LOCAL_EVAL_ROOT="${LSRNA_LOCAL_EVAL_ROOT:-${LSRNA_V3_LOCAL_EVAL_ROOT:-outputs/wan13b_lsrna_v3_checkpoint_evals}}"
 
 mkdir -p "${LOCAL_EVAL_ROOT}"
 
