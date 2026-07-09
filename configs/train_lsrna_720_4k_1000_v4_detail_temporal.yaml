@@ -17,7 +17,7 @@ model:
   scale_factor: 3
   residual_learning: true
   residual_scale: 1.0
-  use_checkpoint: false
+  use_checkpoint: true
 
 train:
   max_steps: 100000
@@ -36,9 +36,9 @@ loss:
   temporal_highfreq_l1: 0.2
   downsample_l1: 0.12
   highfreq_l1: 0.9
-  multiscale_highfreq_l1: 0.45
+  multiscale_highfreq_l1: 0.35
   spatial_grad_l1: 0.45
-  laplacian_l1: 0.35
-  local_std_l1: 0.15
-  fft_amp_l1: 0.05
+  laplacian_l1: 0.25
+  local_std_l1: 0.0
+  fft_amp_l1: 0.0
   channel_stats_l1: 0.03
