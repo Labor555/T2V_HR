@@ -17,7 +17,7 @@ model:
   scale_factor: 3
   residual_learning: true
   residual_scale: 1.0
-  use_checkpoint: true
+  use_checkpoint: false
 
 train:
   max_steps: 100000
@@ -31,12 +31,12 @@ loss:
   latent_l1: 0.8
   temporal_l1: 0.25
   temporal_lag2_l1: 0.15
-  temporal_lag4_l1: 0.08
+  temporal_lag4_l1: 0.0
   temporal_accel_l1: 0.2
   temporal_highfreq_l1: 0.2
   downsample_l1: 0.12
   highfreq_l1: 0.9
-  multiscale_highfreq_l1: 0.35
+  multiscale_highfreq_l1: 0.0
   spatial_grad_l1: 0.45
   laplacian_l1: 0.25
   local_std_l1: 0.0
