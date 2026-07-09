@@ -10,10 +10,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/runtime.env"
 
 SAMPLE="${LSRNA_V3_EVAL_SAMPLE:-00000004}"
-MEM_THRESHOLD_MB="${LSRNA_V3_EVAL_MEM_MB:-3000}"
-UTIL_THRESHOLD="${LSRNA_V3_EVAL_UTIL:-25}"
+MEM_THRESHOLD_MB="${LSRNA_V3_EVAL_MEM_MB:-25000}"
+UTIL_THRESHOLD="${LSRNA_V3_EVAL_UTIL:-100}"
+FORCE_GPU="${LSRNA_V3_EVAL_GPU:-}"
 
-ssh "${REMOTE_HOST}" "PROJECT='${REMOTE_PROJECT_DIR}' PY='${REMOTE_PYTHON:-python}' SAMPLE='${SAMPLE}' MEM_THRESHOLD_MB='${MEM_THRESHOLD_MB}' UTIL_THRESHOLD='${UTIL_THRESHOLD}' REPAIR='${REPAIR}' bash -s" <<'EOF'
+ssh "${REMOTE_HOST}" "PROJECT='${REMOTE_PROJECT_DIR}' PY='${REMOTE_PYTHON:-python}' SAMPLE='${SAMPLE}' MEM_THRESHOLD_MB='${MEM_THRESHOLD_MB}' UTIL_THRESHOLD='${UTIL_THRESHOLD}' FORCE_GPU='${FORCE_GPU}' REPAIR='${REPAIR}' bash -s" <<'EOF'
 set -euo pipefail
 cd "${PROJECT}"
 TRAIN_DIR="outputs/wan13b_lsrna_720_4k_1000_v3_full"
@@ -40,15 +41,24 @@ if [[ -n "${running_eval}" ]]; then
 fi
 
 available_gpus() {
+  if [[ -n "${FORCE_GPU}" ]]; then
+    printf '%s\n' "${FORCE_GPU}"
+    return
+  fi
   nvidia-smi --query-gpu=index,memory.used,utilization.gpu --format=csv,noheader,nounits |
     awk -F, -v mem_limit="${MEM_THRESHOLD_MB}" -v util_limit="${UTIL_THRESHOLD}" '
       {
         gsub(/ /, "", $1); gsub(/ /, "", $2); gsub(/ /, "", $3);
-        if (first == "" && $2 + 0 <= mem_limit + 0 && $3 + 0 <= util_limit + 0) {
-          first = $1;
+        mem = $2 + 0;
+        util = $3 + 0;
+        if (mem <= mem_limit + 0 && util <= util_limit + 0) {
+          if (best == "" || mem < best_mem) {
+            best = $1;
+            best_mem = mem;
+          }
         }
       }
-      END { print first }
+      END { print best }
     '
 }
 
@@ -88,6 +98,7 @@ echo "sample=${SAMPLE}"
 echo "out=${out}"
 echo "log=${log}"
 echo "selected_gpu=${gpu:-none}"
+[[ -n "${FORCE_GPU}" ]] && echo "forced_gpu=${FORCE_GPU}"
 
 if [[ "${REPAIR}" != "1" ]]; then
   exit 0
