@@ -19,7 +19,7 @@ data:
   num_workers: 2
   random_crop:
     enabled: true
-    hr_size: [64, 112]
+    hr_size: [80, 144]
 
 lsrna:
   enabled: false
@@ -44,12 +44,12 @@ train:
   weight_decay: 0.0
   resume: true
   gradient_checkpointing: true
-  gradient_accumulation_steps: 2
+  gradient_accumulation_steps: 1
   grad_clip: 1.0
   sigma_min: 0.18
   sigma_max: 0.55
   log_every: 10
-  save_every: 500
+  save_every: 100
 
 loss:
   velocity_l2: 1.0
