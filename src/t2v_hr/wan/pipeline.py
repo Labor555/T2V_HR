@@ -143,6 +143,7 @@ def load_wan_pipeline_legacy(
     vae_weight: str = "Wan2.1_VAE.pth",
     flow_shift: float = 5.0,
     load_text_encoder: bool = True,
+    load_transformer: bool = True,
     load_vae: bool = True,
 ):
     from diffusers import WanPipeline
@@ -154,7 +155,9 @@ def load_wan_pipeline_legacy(
     text_encoder = (
         load_wan_text_encoder_legacy(model_path, torch_dtype=torch_dtype, device=device) if load_text_encoder else None
     )
-    transformer = load_wan_transformer_legacy(model_path, torch_dtype=torch_dtype, device=device)
+    transformer = (
+        load_wan_transformer_legacy(model_path, torch_dtype=torch_dtype, device=device) if load_transformer else None
+    )
     vae = (
         load_wan_vae(
             model_path,
