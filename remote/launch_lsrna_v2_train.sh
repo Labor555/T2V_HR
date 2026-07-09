@@ -6,52 +6,64 @@ source "${SCRIPT_DIR}/runtime.env"
 source "${SCRIPT_DIR}/remote_common.sh"
 
 ENV_PREFIX="$(remote_env_prefix)"
-TRAIN_GPUS="${LSRNA_V2_GPUS:-${REMOTE_CUDA_VISIBLE_DEVICES:-0,4,7}}"
+TRAIN_GPUS="${LSRNA_V2_GPUS:-auto}"
+MIN_GPUS="${LSRNA_V2_MIN_GPUS:-1}"
 MEM_THRESHOLD_MB="${LSRNA_V2_WAIT_MEM_MB:-3000}"
+UTIL_THRESHOLD="${LSRNA_V2_WAIT_UTIL:-20}"
 CONFIG="${LSRNA_V2_CONFIG:-configs/train_lsrna_720_4k_1000_v2.yaml}"
 RUN_NAME="lsrna_v2_train_$(date +%Y%m%d_%H%M%S)"
-NUM_TRAIN_GPUS="$(awk -F',' '{print NF}' <<<"${TRAIN_GPUS}")"
 
 ssh "${REMOTE_HOST}" "cd '${REMOTE_PROJECT_DIR}' && ${ENV_PREFIX} bash -s" <<EOF
 set -euo pipefail
 mkdir -p logs
 LOG="logs/${RUN_NAME}.log"
 PID_FILE="logs/${RUN_NAME}.pid"
+RUNNER="logs/${RUN_NAME}.runner.sh"
 
-nohup bash -c '
+cat > "\${RUNNER}" <<'RUNNER_EOF'
+#!/usr/bin/env bash
 set -euo pipefail
-cd "${REMOTE_PROJECT_DIR}"
-TRAIN_GPUS="${TRAIN_GPUS}"
-CONFIG="${CONFIG}"
-NUM_TRAIN_GPUS="${NUM_TRAIN_GPUS}"
-MEM_THRESHOLD_MB="${MEM_THRESHOLD_MB}"
 
-gpu_mem_used() {
-  nvidia-smi --query-gpu=index,memory.used --format=csv,noheader,nounits
+available_gpus() {
+  nvidia-smi --query-gpu=index,memory.used,utilization.gpu --format=csv,noheader,nounits |
+    awk -F, -v mem_limit="\${MEM_THRESHOLD_MB}" -v util_limit="\${UTIL_THRESHOLD}" '
+      {
+        gsub(/ /, "", \$1); gsub(/ /, "", \$2); gsub(/ /, "", \$3);
+        if (\$2 + 0 <= mem_limit + 0 && \$3 + 0 <= util_limit + 0) {
+          if (out == "") out = \$1; else out = out "," \$1;
+        }
+      }
+      END { print out }
+    '
 }
 
-gpus_ready() {
-  IFS="," read -ra GPU_LIST <<< "\${TRAIN_GPUS}"
-  local blocked=0
-  local summary
-  summary="\$(gpu_mem_used)"
-  for gpu in "\${GPU_LIST[@]}"; do
-    used="\$(awk -F, -v g="\${gpu}" '"'"'\$1+0 == g+0 {gsub(/ /, "", \$2); print \$2}'"'"' <<<"\${summary}")"
-    used="\${used:-999999}"
-    if (( used > MEM_THRESHOLD_MB )); then
-      blocked=1
-    fi
-  done
-  return "\${blocked}"
+count_gpus() {
+  local value="\${1:-}"
+  if [[ -z "\${value}" ]]; then
+    echo 0
+  else
+    awk -F, "{print NF}" <<<"\${value}"
+  fi
 }
 
-echo "[\$(date)] waiting for train_gpus=\${TRAIN_GPUS} mem_threshold_mb=\${MEM_THRESHOLD_MB}"
-while ! gpus_ready; do
+cd "\${PROJECT_DIR}"
+echo "[\$(date)] auto training request=\${REQUESTED_GPUS} min_gpus=\${MIN_GPUS} mem_threshold_mb=\${MEM_THRESHOLD_MB} util_threshold=\${UTIL_THRESHOLD}"
+while true; do
+  if [[ "\${REQUESTED_GPUS}" == "auto" ]]; then
+    TRAIN_GPUS="\$(available_gpus)"
+  else
+    TRAIN_GPUS="\${REQUESTED_GPUS}"
+  fi
+  NUM_TRAIN_GPUS="\$(count_gpus "\${TRAIN_GPUS}")"
+  if (( NUM_TRAIN_GPUS >= MIN_GPUS )); then
+    break
+  fi
+  echo "[\$(date)] waiting: selected_gpus=\${TRAIN_GPUS:-none} count=\${NUM_TRAIN_GPUS}/\${MIN_GPUS}"
   nvidia-smi --query-gpu=index,memory.used,memory.total,utilization.gpu --format=csv,noheader
   sleep 300
 done
 
-echo "[\$(date)] starting v2 LSRNA training config=\${CONFIG} gpus=\${TRAIN_GPUS}"
+echo "[\$(date)] starting v2 LSRNA training config=\${CONFIG} gpus=\${TRAIN_GPUS} n=\${NUM_TRAIN_GPUS}"
 CUDA_VISIBLE_DEVICES="\${TRAIN_GPUS}" python -m torch.distributed.run \
   --standalone \
   --nproc_per_node="\${NUM_TRAIN_GPUS}" \
@@ -70,7 +82,16 @@ max_steps = int(cfg["train"]["max_steps"])
 print("[\$(date)] hold: v2 step=%d/%d" % (step, max_steps))
 PY
 done
-' > "\${LOG}" 2>&1 &
+RUNNER_EOF
+chmod +x "\${RUNNER}"
+
+PROJECT_DIR="${REMOTE_PROJECT_DIR}" \
+REQUESTED_GPUS="${TRAIN_GPUS}" \
+MIN_GPUS="${MIN_GPUS}" \
+CONFIG="${CONFIG}" \
+MEM_THRESHOLD_MB="${MEM_THRESHOLD_MB}" \
+UTIL_THRESHOLD="${UTIL_THRESHOLD}" \
+nohup bash "\${RUNNER}" > "\${LOG}" 2>&1 &
 
 echo \$! > "\${PID_FILE}"
 echo "started ${RUN_NAME}"
