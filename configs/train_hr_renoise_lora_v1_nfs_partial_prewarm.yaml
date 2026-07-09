@@ -1,0 +1,62 @@
+seed: 2026
+precision: bf16
+output_dir: /mnt/nfs/users/lbzhu/T2V_HR/outputs/wan13b_hr_renoise_lora_v1_partial_prewarm
+
+model:
+  model_path: /data/pretrained/Wan2.1-T2V-1.3B
+  format: legacy
+  vae_weight: Wan2.1_VAE.pth
+  flow_shift: 5.0
+  num_train_timesteps: 1000
+
+prompt:
+  prompt_override: high
+  max_sequence_length: 512
+
+data:
+  cache_index: /mnt/nfs/users/lbzhu/T2V_HR/cache/wan13b_latents_720_4k_1000/index_partial.jsonl
+  batch_size: 1
+  num_workers: 2
+  random_crop:
+    enabled: true
+    hr_size: [40, 72]
+
+lsrna:
+  enabled: false
+
+lora:
+  rank: 8
+  alpha: 8
+  dropout: 0.0
+  target_substrings:
+    - attn1.to_q
+    - attn1.to_k
+    - attn1.to_v
+    - attn1.to_out.0
+    - attn2.to_q
+    - attn2.to_k
+    - attn2.to_v
+    - attn2.to_out.0
+
+train:
+  max_steps: 20000
+  lr: 0.0001
+  weight_decay: 0.0
+  resume: true
+  gradient_checkpointing: true
+  gradient_accumulation_steps: 2
+  grad_clip: 1.0
+  sigma_min: 0.18
+  sigma_max: 0.55
+  log_every: 10
+  save_every: 500
+
+loss:
+  velocity_l2: 1.0
+  velocity_l1: 0.15
+  x0_l1: 0.5
+  temporal_l1: 0.2
+  highfreq_l1: 0.25
+  spatial_grad_l1: 0.12
+  laplacian_l1: 0.05
+  coarse_lowfreq_l1: 0.0
