@@ -30,6 +30,7 @@ def parse_args():
     parser.add_argument("--config", required=True)
     parser.add_argument("--lr-latent", default="", help="Optional cached low-res latent tensor.")
     parser.add_argument("--hr-latent", default="", help="Optional cached high-res latent tensor for target comparison.")
+    parser.add_argument("--lsr-checkpoint", default="", help="Override config lsr.checkpoint.")
     parser.add_argument(
         "--mode",
         choices=["lsrna", "full"],
@@ -123,7 +124,7 @@ def main() -> None:
     dtype = dtype_from_string(config.get("model", {}).get("torch_dtype", "bf16"))
     out_dir = ensure_dir(args.output_dir or config.get("output", {}).get("dir", "outputs/infer_lsrna"))
 
-    lsr = load_lsr(config["lsr"]["checkpoint"], device, dtype)
+    lsr = load_lsr(args.lsr_checkpoint or config["lsr"]["checkpoint"], device, dtype)
     scale_factor = int(config.get("lsr", {}).get("scale_factor", getattr(lsr, "scale_factor", 1)))
 
     if args.lr_latent:
