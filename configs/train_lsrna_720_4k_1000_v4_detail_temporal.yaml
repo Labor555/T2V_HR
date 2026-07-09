@@ -33,7 +33,7 @@ loss:
   temporal_lag2_l1: 0.15
   temporal_lag4_l1: 0.0
   temporal_accel_l1: 0.2
-  temporal_highfreq_l1: 0.2
+  temporal_highfreq_l1: 0.0
   downsample_l1: 0.12
   highfreq_l1: 0.9
   multiscale_highfreq_l1: 0.0
