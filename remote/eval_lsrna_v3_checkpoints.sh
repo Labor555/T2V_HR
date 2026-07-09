@@ -34,7 +34,14 @@ if [[ "${REPAIR}" == "1" ]]; then
   done < <(find "${EVAL_ROOT}" -mindepth 2 -maxdepth 2 -name RUNNING 2>/dev/null | sort)
 fi
 
-running_eval="$(ps -eo pid=,args= | awk -v root="${EVAL_ROOT}" -v train="${TRAIN_DIR}" 'index($0, root) || ($0 ~ /infer_lsrna.py/ && index($0, train)) {print}' || true)"
+running_eval="$(ps -eo pid=,args= | awk -v root="${EVAL_ROOT}" -v train="${TRAIN_DIR}" '
+  ($0 ~ /python .*infer_lsrna.py/ && (index($0, train) || index($0, root))) ||
+  ($0 ~ /python .*decode_lsrna_latents.py/ && index($0, root)) ||
+  ($0 ~ /bash .*eval_runner.sh/ && index($0, root)) ||
+  ($0 ~ /ffmpeg/ && index($0, root)) {
+    print
+  }
+' || true)"
 if [[ -n "${running_eval}" ]]; then
   echo "eval_status=already_running"
   printf '%s\n' "${running_eval}" | sed 's/^/running_eval_process=/'
@@ -90,7 +97,6 @@ fi
 step="$(basename "${next_ckpt}" .pt | sed 's/^step_//')"
 out="${EVAL_ROOT}/step_${step}/${SAMPLE}"
 step_dir="${EVAL_ROOT}/step_${step}"
-log="logs/eval_lsrna_v3_step_${step}_${SAMPLE}.log"
 log="logs/${LOG_PREFIX}_step_${step}_${SAMPLE}.log"
 gpu="$(available_gpus)"
 
