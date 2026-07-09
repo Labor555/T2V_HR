@@ -30,7 +30,7 @@ from t2v_hr.models.losses import (
 from t2v_hr.models.video_lsr import build_video_lsr
 from t2v_hr.utils.config import ensure_dir, load_config
 from t2v_hr.utils.torch_utils import autocast_context, dtype_from_string, seed_everything
-from t2v_hr.wan.pipeline import load_wan_pipeline_legacy
+from t2v_hr.wan.pipeline import load_wan_pipeline_legacy, load_wan_text_encoder_legacy
 
 
 def parse_args() -> argparse.Namespace:
@@ -72,16 +72,43 @@ def _load_lsrna(config: dict[str, Any], device: torch.device, dtype: torch.dtype
 
 
 @torch.no_grad()
-def _prepare_prompt_embeds(pipe, prompt: str, *, max_sequence_length: int, device: torch.device) -> torch.Tensor:
-    embeds, _ = pipe.encode_prompt(
-        prompt=prompt,
-        negative_prompt=None,
-        do_classifier_free_guidance=False,
-        num_videos_per_prompt=1,
-        max_sequence_length=max_sequence_length,
-        device=device,
+def _prepare_prompt_embeds_cpu(
+    model_path: str | Path,
+    prompt: str,
+    *,
+    max_sequence_length: int,
+    dtype: torch.dtype,
+    target_device: torch.device,
+) -> torch.Tensor:
+    import gc
+
+    from diffusers.pipelines.wan.pipeline_wan import prompt_clean
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(str(Path(model_path) / "google" / "umt5-xxl"), local_files_only=True)
+    text_encoder = load_wan_text_encoder_legacy(model_path, torch_dtype=torch.float32, device="cpu")
+    cleaned = [prompt_clean(prompt)]
+    text_inputs = tokenizer(
+        cleaned,
+        padding="max_length",
+        max_length=max_sequence_length,
+        truncation=True,
+        add_special_tokens=True,
+        return_attention_mask=True,
+        return_tensors="pt",
     )
-    return embeds.to(dtype=pipe.transformer.dtype, device=device)
+    text_input_ids = text_inputs.input_ids
+    mask = text_inputs.attention_mask
+    seq_lens = mask.gt(0).sum(dim=1).long()
+    prompt_embeds = text_encoder(text_input_ids, mask).last_hidden_state.to(dtype=dtype)
+    prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
+    prompt_embeds = torch.stack(
+        [torch.cat([u, u.new_zeros(max_sequence_length - u.size(0), u.size(1))]) for u in prompt_embeds],
+        dim=0,
+    )
+    del text_encoder, tokenizer
+    gc.collect()
+    return prompt_embeds.to(device=target_device, dtype=dtype)
 
 
 def _broadcast_sigma(sigmas: torch.Tensor, like: torch.Tensor) -> torch.Tensor:
@@ -194,21 +221,19 @@ def main() -> None:
         vae_format=str(model_cfg.get("format", "legacy")),
         vae_weight=str(model_cfg.get("vae_weight", "Wan2.1_VAE.pth")),
         flow_shift=float(model_cfg.get("flow_shift", 5.0)),
-        load_text_encoder=True,
+        load_text_encoder=False,
         load_transformer=True,
         load_vae=False,
     )
     prompt_cfg = config.get("prompt", {})
     prompt = str(prompt_cfg.get("prompt_override", "high"))
-    prompt_embeds_1 = _prepare_prompt_embeds(
-        pipe,
+    prompt_embeds_1 = _prepare_prompt_embeds_cpu(
+        model_cfg["model_path"],
         prompt,
         max_sequence_length=int(prompt_cfg.get("max_sequence_length", 512)),
-        device=device,
+        dtype=dtype,
+        target_device=device,
     )
-    pipe.text_encoder = None
-    if hasattr(pipe, "components"):
-        pipe.components["text_encoder"] = None
     torch.cuda.empty_cache()
 
     transformer = pipe.transformer
