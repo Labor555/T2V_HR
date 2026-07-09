@@ -24,11 +24,19 @@ from t2v_hr.utils.torch_utils import autocast_context, dtype_from_string, seed_e
 
 
 class SyntheticLatentDataset(Dataset):
-    def __init__(self, length: int = 8, channels: int = 16, frames: int = 5, lr_hw: tuple[int, int] = (16, 16)) -> None:
+    def __init__(
+        self,
+        length: int = 8,
+        channels: int = 16,
+        frames: int = 5,
+        lr_hw: tuple[int, int] = (16, 16),
+        scale_factor: int = 2,
+    ) -> None:
         self.length = length
         self.channels = channels
         self.frames = frames
         self.lr_hw = lr_hw
+        self.scale_factor = int(scale_factor)
 
     def __len__(self) -> int:
         return self.length
@@ -37,7 +45,7 @@ class SyntheticLatentDataset(Dataset):
         generator = torch.Generator().manual_seed(index)
         lr = torch.randn(self.channels, self.frames, *self.lr_hw, generator=generator)
         hr = torch.nn.functional.interpolate(
-            lr.permute(1, 0, 2, 3), scale_factor=2, mode="bilinear", align_corners=False
+            lr.permute(1, 0, 2, 3), scale_factor=self.scale_factor, mode="bilinear", align_corners=False
         ).permute(1, 0, 2, 3)
         hr = hr + 0.03 * torch.randn(hr.shape, generator=generator)
         return {"lr": lr, "hr": hr, "prompt": "", "source": f"synthetic-{index}"}
@@ -96,7 +104,11 @@ def main() -> None:
 
     data_cfg = config.get("data", {})
     if args.dry_run or not data_cfg.get("cache_index"):
-        dataset: Dataset = SyntheticLatentDataset(channels=int(config.get("model", {}).get("in_channels", 16)))
+        model_cfg = config.get("model", {})
+        dataset: Dataset = SyntheticLatentDataset(
+            channels=int(model_cfg.get("in_channels", 16)),
+            scale_factor=int(model_cfg.get("scale_factor", 2)),
+        )
     else:
         crop_cfg = data_cfg.get("random_crop", {})
         hr_size = tuple(crop_cfg.get("hr_size", [64, 64]))
