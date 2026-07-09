@@ -12,7 +12,7 @@ data:
 model:
   architecture: recurrent
   in_channels: 16
-  hidden_channels: 384
+  hidden_channels: 352
   num_blocks: 12
   temporal_kernel: 3
   propagation_blocks: 1
