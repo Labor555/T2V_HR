@@ -21,6 +21,17 @@ EVAL_ROOT="outputs/wan13b_lsrna_v3_checkpoint_evals"
 CONFIG="configs/infer_lsrna_720_4k_1000_v3_full.yaml"
 mkdir -p logs "${EVAL_ROOT}"
 
+if [[ "${REPAIR}" == "1" ]]; then
+  while IFS= read -r running_marker; do
+    step_dir="$(dirname "${running_marker}")"
+    pid_file="${step_dir}/eval.pid"
+    if [[ ! -s "${pid_file}" ]] || ! kill -0 "$(cat "${pid_file}")" 2>/dev/null; then
+      rm -f "${running_marker}"
+      echo "cleared_stale_eval=$(basename "${step_dir}")"
+    fi
+  done < <(find "${EVAL_ROOT}" -mindepth 2 -maxdepth 2 -name RUNNING 2>/dev/null | sort)
+fi
+
 running_eval="$(pgrep -af 'eval_lsrna_v3_checkpoint|infer_lsrna.py .*train_lsrna_720_4k_1000_v3_full|decode_lsrna_latents.py .*wan13b_lsrna_v3_checkpoint_evals' || true)"
 if [[ -n "${running_eval}" ]]; then
   echo "eval_status=already_running"
@@ -113,7 +124,7 @@ CUDA_VISIBLE_DEVICES="${gpu}" "${PY}" scripts/decode_lsrna_latents.py \\
 ffmpeg -y \\
   -i "${out}/lsrna_noisy.mp4" \\
   -i "${out}/target_reconstruction.mp4" \\
-  -filter_complex "[0:v]scale=960:540,setsar=1[v0];[1:v]scale=960:540,setsar=1[v1];[v0][v1]hstack=inputs=2[v]" \\
+  -filter_complex "[0:v]scale=960:540,setsar=1,drawtext=text='Video-LSRNA':x=24:y=24:fontsize=34:fontcolor=white:box=1:boxcolor=black@0.55[v0];[1:v]scale=960:540,setsar=1,drawtext=text='Baseline Wan target':x=24:y=24:fontsize=34:fontcolor=white:box=1:boxcolor=black@0.55[v1];[v0][v1]hstack=inputs=2[v]" \\
   -map "[v]" -c:v libx264 -pix_fmt yuv420p -crf 18 \\
   "${out}/compare_lsrna_vs_wan_target_540p.mp4"
 rm -f "${step_dir}/RUNNING"
